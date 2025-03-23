@@ -5,9 +5,9 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateBookingDto } from './dto/create-booking.dto';
+import { CreateBookingDto, FlightSegmentDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
-import { Booking, BookingStatus } from '@prisma/client';
+import { Booking, BookingStatus, PassengerType } from '@prisma/client';
 import { FlightsService } from '../flights/flights.service';
 
 @Injectable()
@@ -16,9 +16,8 @@ export class BookingsService {
     private prisma: PrismaService,
     private flightsService: FlightsService,
   ) {}
-
-  async getUserBookings(userId: string): Promise<Booking[]> {
-    return this.prisma.booking.findMany({
+  async getUserBookings(userId: string) {
+    const bookings = await this.prisma.booking.findMany({
       where: {
         userId,
       },
@@ -39,6 +38,42 @@ export class BookingsService {
       orderBy: {
         bookingDate: 'desc',
       },
+    });
+
+    return bookings.map((booking) => {
+      const passengers = {
+        adult: booking.passengers.filter(
+          (p) => p.passengerType === PassengerType.ADULT,
+        ).length,
+        child: booking.passengers.filter(
+          (p) => p.passengerType === PassengerType.CHILD,
+        ).length,
+        infant: booking.passengers.filter(
+          (p) => p.passengerType === PassengerType.INFANT,
+        ).length,
+      };
+
+      const flightSegment = booking.flightSegments[0]; // Assuming one flight segment for simplicity
+
+      return {
+        id: booking.id,
+        flightNumber: flightSegment.flight.flightNumber,
+        from: flightSegment.flight.departureAirport.code,
+        to: flightSegment.flight.arrivalAirport.code,
+        departureDate: flightSegment.flight.departureTime.toISOString(),
+        returnDate: flightSegment.isReturn
+          ? flightSegment.flight.arrivalTime.toISOString()
+          : undefined,
+        passengers,
+        cabinClass: flightSegment.cabinClass.toLowerCase() as
+          | 'economy'
+          | 'premium'
+          | 'business'
+          | 'first',
+        status: booking.status.toLowerCase() as 'confirmed' | 'cancelled',
+        price: booking.totalAmount,
+        bookingDate: booking.bookingDate.toISOString(),
+      };
     });
   }
 
@@ -74,16 +109,42 @@ export class BookingsService {
 
     return booking;
   }
-
   async createBooking(
     createBookingDto: CreateBookingDto,
     userId: string,
   ): Promise<Booking> {
-    const { flightSegments, passengers, totalAmount } = createBookingDto;
+    const { passengers, totalAmount } = createBookingDto;
+
+    // Handle both formats: either flightSegments array or single flightId/cabinClass
+    let flightSegments: FlightSegmentDto[] = [];
+
+    if (
+      createBookingDto.flightSegments &&
+      createBookingDto.flightSegments.length > 0
+    ) {
+      flightSegments = createBookingDto.flightSegments;
+    } else if (createBookingDto.flightId && createBookingDto.cabinClass) {
+      // Convert old format to new format
+      flightSegments = [
+        {
+          flightId: createBookingDto.flightId,
+          cabinClass: createBookingDto.cabinClass,
+          fareAmount: totalAmount, // Assuming the total is the fare for this flight
+          isReturn: false,
+        },
+      ];
+    } else {
+      throw new Error(
+        'Either flightSegments array or flightId with cabinClass must be provided',
+      );
+    }
 
     // Validate that all flights exist
     for (const segment of flightSegments) {
-      await this.flightsService.getFlight(segment.flightId);
+      const flight = await this.flightsService.getFlight(segment.flightId);
+      if (!flight) {
+        throw new Error(`Flight with ID ${segment.flightId} not found`);
+      }
     }
 
     // Create the booking with a transaction to ensure data consistency
@@ -93,20 +154,20 @@ export class BookingsService {
         data: {
           userId,
           totalAmount,
-          status: BookingStatus.PENDING,
-          paymentStatus: 'PENDING', // Assuming payment will be handled separately
+          status: BookingStatus.CONFIRMED,
+          paymentStatus: 'COMPLETED',
 
           // Create flight segments
           flightSegments: {
             create: flightSegments.map((segment) => ({
               flightId: segment.flightId,
               cabinClass: segment.cabinClass,
-              fareAmount: segment.fareAmount,
+              fareAmount: segment.fareAmount || totalAmount, // Fallback to total amount if not provided
               isReturn: segment.isReturn || false,
             })),
           },
 
-          // Create passenger records
+          // Create passenger records with support for both type and passengerType
           passengers: {
             create: passengers.map((passenger) => ({
               firstName: passenger.firstName,
@@ -115,7 +176,7 @@ export class BookingsService {
               nationality: passenger.nationality,
               passportNumber: passenger.passportNumber,
               passportExpiry: passenger.passportExpiry,
-              passengerType: passenger.passengerType,
+              passengerType: passenger.type || PassengerType.ADULT,
             })),
           },
         },
@@ -128,11 +189,6 @@ export class BookingsService {
           },
         },
       });
-
-      // After successful booking, we could add logic to:
-      // 1. Update flight seat availability (if you're tracking inventory)
-      // 2. Send confirmation email
-      // 3. Generate e-ticket
 
       return booking;
     });
@@ -180,7 +236,7 @@ export class BookingsService {
                 nationality: passenger.nationality,
                 passportNumber: passenger.passportNumber,
                 passportExpiry: passenger.passportExpiry,
-                passengerType: passenger.passengerType,
+                passengerType: passenger.type,
               })),
             },
             updatedAt: new Date(),

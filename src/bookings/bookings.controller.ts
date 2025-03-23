@@ -31,6 +31,7 @@ export class BookingsController {
   @Get()
   @ApiOperation({ summary: 'Get all bookings for authenticated user' })
   async getUserBookings(@Request() req) {
+    console.log('user', req.user);
     const userId = req.user.id;
     return this.bookingsService.getUserBookings(userId);
   }
@@ -44,11 +45,13 @@ export class BookingsController {
   }
 
   @Post()
+  @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Create a new booking' })
   async createBooking(
     @Body() createBookingDto: CreateBookingDto,
     @Request() req,
   ) {
+    console.log('In create');
     const userId = req.user.id;
     return this.bookingsService.createBooking(createBookingDto, userId);
   }

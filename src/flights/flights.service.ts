@@ -25,24 +25,6 @@ export class FlightsService {
       returnNextDay.setDate(returnNextDay.getDate() + 1);
     }
 
-    // Create a more flexible origin search condition
-    const originCondition = {
-      OR: [
-        { name: from }, // Airport name
-        { code: from }, // Airport code
-        { city: from }, // City name
-      ],
-    };
-
-    // Create a more flexible destination search condition
-    const destinationCondition = {
-      OR: [
-        { name: to }, // Airport name
-        { code: to }, // Airport code
-        { city: to }, // City name
-      ],
-    };
-
     // Get current date for future flights
     const currentDate = new Date();
 
@@ -51,11 +33,23 @@ export class FlightsService {
       // Try to find flights with exact dates first
       const exactDateFlights = await this.prisma.flight.findMany({
         where: {
-          departureAirport: originCondition,
-          arrivalAirport: destinationCondition,
           departureTime: {
             gte: depDate,
             lt: nextDay,
+          },
+          departureAirport: {
+            OR: [
+              { name: { contains: from, mode: 'insensitive' } },
+              { code: { contains: from, mode: 'insensitive' } },
+              { city: { contains: from, mode: 'insensitive' } },
+            ],
+          },
+          arrivalAirport: {
+            OR: [
+              { name: { contains: to, mode: 'insensitive' } },
+              { code: { contains: to, mode: 'insensitive' } },
+              { city: { contains: to, mode: 'insensitive' } },
+            ],
           },
         },
         include: {
@@ -79,10 +73,22 @@ export class FlightsService {
       // Otherwise, find future flights for the same route (one-way only)
       return this.prisma.flight.findMany({
         where: {
-          departureAirport: originCondition,
-          arrivalAirport: destinationCondition,
           departureTime: {
             gte: currentDate,
+          },
+          departureAirport: {
+            OR: [
+              { name: { contains: from, mode: 'insensitive' } },
+              { code: { contains: from, mode: 'insensitive' } },
+              { city: { contains: from, mode: 'insensitive' } },
+            ],
+          },
+          arrivalAirport: {
+            OR: [
+              { name: { contains: to, mode: 'insensitive' } },
+              { code: { contains: to, mode: 'insensitive' } },
+              { city: { contains: to, mode: 'insensitive' } },
+            ],
           },
         },
         include: {
@@ -107,11 +113,23 @@ export class FlightsService {
     // Try to find outbound flights with exact dates
     const outboundFlights = await this.prisma.flight.findMany({
       where: {
-        departureAirport: originCondition,
-        arrivalAirport: destinationCondition,
         departureTime: {
           gte: depDate,
           lt: nextDay,
+        },
+        departureAirport: {
+          OR: [
+            { name: { contains: from, mode: 'insensitive' } },
+            { code: { contains: from, mode: 'insensitive' } },
+            { city: { contains: from, mode: 'insensitive' } },
+          ],
+        },
+        arrivalAirport: {
+          OR: [
+            { name: { contains: to, mode: 'insensitive' } },
+            { code: { contains: to, mode: 'insensitive' } },
+            { city: { contains: to, mode: 'insensitive' } },
+          ],
         },
       },
       include: {
@@ -130,11 +148,23 @@ export class FlightsService {
     // Try to find return flights with exact dates
     const returnFlights = await this.prisma.flight.findMany({
       where: {
-        departureAirport: destinationCondition,
-        arrivalAirport: originCondition,
         departureTime: {
           gte: returnDepDate,
           lt: returnNextDay,
+        },
+        departureAirport: {
+          OR: [
+            { name: { contains: to, mode: 'insensitive' } },
+            { code: { contains: to, mode: 'insensitive' } },
+            { city: { contains: to, mode: 'insensitive' } },
+          ],
+        },
+        arrivalAirport: {
+          OR: [
+            { name: { contains: from, mode: 'insensitive' } },
+            { code: { contains: from, mode: 'insensitive' } },
+            { city: { contains: from, mode: 'insensitive' } },
+          ],
         },
       },
       include: {
@@ -156,15 +186,25 @@ export class FlightsService {
     }
 
     // If we couldn't find exact matches, handle fallback for round trips
-    // In this case, we want to find alternative round trips, not just any flights
-
     // Get future outbound flights for the same route
     const futureOutboundFlights = await this.prisma.flight.findMany({
       where: {
-        departureAirport: originCondition,
-        arrivalAirport: destinationCondition,
         departureTime: {
           gte: currentDate,
+        },
+        departureAirport: {
+          OR: [
+            { name: { contains: from, mode: 'insensitive' } },
+            { code: { contains: from, mode: 'insensitive' } },
+            { city: { contains: from, mode: 'insensitive' } },
+          ],
+        },
+        arrivalAirport: {
+          OR: [
+            { name: { contains: to, mode: 'insensitive' } },
+            { code: { contains: to, mode: 'insensitive' } },
+            { city: { contains: to, mode: 'insensitive' } },
+          ],
         },
       },
       include: {
@@ -191,10 +231,22 @@ export class FlightsService {
       // Find return flights that depart after the outbound flight arrives
       const potentialReturnFlights = await this.prisma.flight.findMany({
         where: {
-          departureAirport: destinationCondition,
-          arrivalAirport: originCondition,
           departureTime: {
             gte: outbound.arrivalTime,
+          },
+          departureAirport: {
+            OR: [
+              { name: { contains: to, mode: 'insensitive' } },
+              { code: { contains: to, mode: 'insensitive' } },
+              { city: { contains: to, mode: 'insensitive' } },
+            ],
+          },
+          arrivalAirport: {
+            OR: [
+              { name: { contains: from, mode: 'insensitive' } },
+              { code: { contains: from, mode: 'insensitive' } },
+              { city: { contains: from, mode: 'insensitive' } },
+            ],
           },
         },
         include: {

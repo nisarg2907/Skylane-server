@@ -89,14 +89,11 @@ CREATE TABLE "flights" (
 -- CreateTable
 CREATE TABLE "bookings" (
     "id" TEXT NOT NULL,
-    "bookingReference" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "totalAmount" DOUBLE PRECISION NOT NULL,
     "status" "BookingStatus" NOT NULL DEFAULT 'PENDING',
     "bookingDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "paymentStatus" TEXT NOT NULL,
-    "contactEmail" TEXT NOT NULL,
-    "contactPhone" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -141,9 +138,6 @@ CREATE UNIQUE INDEX "airports_code_key" ON "airports"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "airlines_code_key" ON "airlines"("code");
-
--- CreateIndex
-CREATE UNIQUE INDEX "bookings_bookingReference_key" ON "bookings"("bookingReference");
 
 -- AddForeignKey
 ALTER TABLE "payment_methods" ADD CONSTRAINT "payment_methods_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

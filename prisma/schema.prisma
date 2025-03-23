@@ -141,7 +141,7 @@ model Booking {
   updatedAt         DateTime  @updatedAt
   
   // Relations
-  user              User      @relation(fields: [userId], references: [id])
+  user              User      @relation(fields: [userId], references: [authId])
   passengers        Passenger[]
   flightSegments    FlightSegment[]
   

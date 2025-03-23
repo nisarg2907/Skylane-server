@@ -1,4 +1,3 @@
-// dto/create-booking.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsArray,
@@ -44,10 +43,14 @@ export class PassengerDto {
   @IsOptional()
   passportExpiry?: string;
 
-  @ApiProperty({ enum: PassengerType, default: PassengerType.ADULT })
+  @ApiProperty({
+    enum: PassengerType,
+    name: 'type',
+    default: PassengerType.ADULT,
+  })
   @IsEnum(PassengerType)
   @IsOptional()
-  passengerType?: PassengerType = PassengerType.ADULT;
+  type?: PassengerType = PassengerType.ADULT;
 }
 
 export class FlightSegmentDto {
@@ -71,21 +74,33 @@ export class FlightSegmentDto {
   isReturn?: boolean;
 }
 
+// New DTO to handle the frontend format
 export class CreateBookingDto {
   @ApiProperty()
   @IsNumber()
   @IsNotEmpty()
   totalAmount: number;
 
-  @ApiProperty({ type: [FlightSegmentDto] })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => FlightSegmentDto)
-  flightSegments: FlightSegmentDto[];
-
   @ApiProperty({ type: [PassengerDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => PassengerDto)
   passengers: PassengerDto[];
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  flightId?: string;
+
+  @ApiProperty({ enum: CabinClass, required: false })
+  @IsEnum(CabinClass)
+  @IsOptional()
+  cabinClass?: CabinClass;
+
+  @ApiProperty({ type: [FlightSegmentDto], required: false })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FlightSegmentDto)
+  @IsOptional()
+  flightSegments?: FlightSegmentDto[];
 }
