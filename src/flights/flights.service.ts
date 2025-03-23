@@ -76,7 +76,7 @@ export class FlightsService {
         return exactDateFlights;
       }
 
-      // Otherwise, find future flights for the same route
+      // Otherwise, find future flights for the same route (one-way only)
       return this.prisma.flight.findMany({
         where: {
           departureAirport: originCondition,
@@ -105,7 +105,7 @@ export class FlightsService {
 
     // For round trips
     // Try to find outbound flights with exact dates
-    let outboundFlights = await this.prisma.flight.findMany({
+    const outboundFlights = await this.prisma.flight.findMany({
       where: {
         departureAirport: originCondition,
         arrivalAirport: destinationCondition,
@@ -127,36 +127,8 @@ export class FlightsService {
       },
     });
 
-    // If no outbound flights found, get future flights
-    if (outboundFlights.length === 0) {
-      outboundFlights = await this.prisma.flight.findMany({
-        where: {
-          departureAirport: originCondition,
-          arrivalAirport: destinationCondition,
-          departureTime: {
-            gte: currentDate,
-          },
-        },
-        include: {
-          airline: true,
-          departureAirport: true,
-          arrivalAirport: true,
-          flightSegments: {
-            where: {
-              cabinClass,
-              isReturn: false,
-            },
-          },
-        },
-        orderBy: {
-          departureTime: 'asc',
-        },
-        take: 5, // Limit results
-      });
-    }
-
     // Try to find return flights with exact dates
-    let returnFlights = await this.prisma.flight.findMany({
+    const returnFlights = await this.prisma.flight.findMany({
       where: {
         departureAirport: destinationCondition,
         arrivalAirport: originCondition,
@@ -178,20 +150,51 @@ export class FlightsService {
       },
     });
 
-    // If no return flights found with exact dates, get future return flights
-    if (returnFlights.length === 0) {
-      // Use the earliest outbound arrival time as the minimum for return departure
-      const minReturnDate =
-        outboundFlights.length > 0
-          ? outboundFlights[0].arrivalTime
-          : currentDate;
+    // If both outbound and return flights are found with exact dates, return them
+    if (outboundFlights.length > 0 && returnFlights.length > 0) {
+      return [...outboundFlights, ...returnFlights];
+    }
 
-      returnFlights = await this.prisma.flight.findMany({
+    // If we couldn't find exact matches, handle fallback for round trips
+    // In this case, we want to find alternative round trips, not just any flights
+
+    // Get future outbound flights for the same route
+    const futureOutboundFlights = await this.prisma.flight.findMany({
+      where: {
+        departureAirport: originCondition,
+        arrivalAirport: destinationCondition,
+        departureTime: {
+          gte: currentDate,
+        },
+      },
+      include: {
+        airline: true,
+        departureAirport: true,
+        arrivalAirport: true,
+        flightSegments: {
+          where: {
+            cabinClass,
+            isReturn: false,
+          },
+        },
+      },
+      orderBy: {
+        departureTime: 'asc',
+      },
+      take: 5, // Limit results
+    });
+
+    // For each outbound flight, find corresponding return flights
+    const pairedFlights = [];
+
+    for (const outbound of futureOutboundFlights) {
+      // Find return flights that depart after the outbound flight arrives
+      const potentialReturnFlights = await this.prisma.flight.findMany({
         where: {
           departureAirport: destinationCondition,
           arrivalAirport: originCondition,
           departureTime: {
-            gte: minReturnDate,
+            gte: outbound.arrivalTime,
           },
         },
         include: {
@@ -208,11 +211,22 @@ export class FlightsService {
         orderBy: {
           departureTime: 'asc',
         },
-        take: 5, // Limit results
+        take: 2, // Limit to 2 return options per outbound flight
       });
+
+      if (potentialReturnFlights.length > 0) {
+        // Add this outbound flight and its potential returns to the result
+        pairedFlights.push(outbound, ...potentialReturnFlights);
+      }
     }
 
-    return [...outboundFlights, ...returnFlights];
+    // If we found paired flights, return them
+    if (pairedFlights.length > 0) {
+      return pairedFlights;
+    }
+
+    // If we couldn't find any paired flights, return an empty array
+    return [];
   }
   async getFlight(id: string): Promise<Flight> {
     const flight = await this.prisma.flight.findUnique({
