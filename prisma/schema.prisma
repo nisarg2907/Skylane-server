@@ -132,14 +132,11 @@ enum PassengerType {
 
 model Booking {
   id                String    @id @default(uuid())
-  bookingReference  String    @unique
   userId            String
   totalAmount       Float
   status            BookingStatus @default(PENDING)
   bookingDate       DateTime  @default(now())
   paymentStatus     String    // PAID, PENDING, FAILED
-  contactEmail      String
-  contactPhone      String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   
