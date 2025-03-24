@@ -11,6 +11,9 @@ import { TicketService } from './ticket/ticket.service';
 import { TicketModule } from './ticket/ticket.module';
 import { EmailService } from './email/email.service';
 import { EmailModule } from './email/email.module';
+import { UserModule } from './user/user.module';
+import { EcryptionModule } from './ecryption/ecryption.module';
+import { EncryptionService } from './encryption/encryption.service';
 
 @Module({
   imports: [
@@ -24,8 +27,10 @@ import { EmailModule } from './email/email.module';
     SupabaseModule,
     TicketModule,
     EmailModule,
+    UserModule,
+    EcryptionModule,
   ],
   controllers: [AppController],
-  providers: [AppService, TicketService, EmailService],
+  providers: [AppService, TicketService, EmailService, EncryptionService],
 })
 export class AppModule {}

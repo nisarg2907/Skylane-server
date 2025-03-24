@@ -15,9 +15,7 @@ export class AuthGuard implements CanActivate {
     const accessToken = request.headers.authorization?.split(' ')[1];
 
     try {
-      console.log('Authorization Header:', request.headers.authorization);
       if (!accessToken) {
-        console.log('Access token is missing');
         throw new UnauthorizedException('Access token is missing');
       }
 
@@ -25,7 +23,6 @@ export class AuthGuard implements CanActivate {
       request.user = user;
       return true;
     } catch (error) {
-      console.log('error', error);
       throw new UnauthorizedException('Invalid access token');
     }
   }

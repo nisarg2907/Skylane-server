@@ -62,10 +62,6 @@ export class BookingsService {
       };
 
       const flightSegment = booking.flightSegments[0];
-      console.log(
-        'Mapping over bookings with confirmed status:',
-        booking.status === BookingStatus.CONFIRMED,
-      );
 
       return {
         id: booking.id,
@@ -242,7 +238,6 @@ export class BookingsService {
       throw error;
     }
   }
-
   async updateBooking(
     id: string,
     updateBookingDto: UpdateBookingDto,
@@ -261,66 +256,144 @@ export class BookingsService {
       );
     }
 
-    // Extract updateable fields
+    // Extract passenger information for update
     const { passengers } = updateBookingDto;
 
-    // For now, we only allow updating passenger information
+    // If passenger data is provided, update passenger information
     if (passengers && passengers.length > 0) {
-      // Transaction to ensure consistent data
       try {
-        const updatedBooking = await this.prisma.$transaction(
-          async (prisma) => {
-            // Delete existing passengers
-            await prisma.passenger.deleteMany({
-              where: { bookingId: id },
+        let updatedBooking;
+
+        // Track changes to report in email
+        const changes = {
+          passengers: [],
+        };
+
+        // Transaction to ensure data consistency
+        await this.prisma.$transaction(async (prisma) => {
+          // Update each passenger individually instead of deleting and recreating
+          for (const passengerData of passengers) {
+            // Verify the passenger belongs to this booking
+            const existingPassenger = await prisma.passenger.findFirst({
+              where: {
+                id: passengerData.id,
+                bookingId: id,
+              },
             });
 
-            // Create new passenger records
-            const booking = await prisma.booking.update({
-              where: { id },
-              data: {
-                passengers: {
-                  create: passengers.map((passenger) => ({
-                    firstName: passenger.firstName,
-                    lastName: passenger.lastName,
-                    dateOfBirth: passenger.dateOfBirth,
-                    nationality: passenger.nationality,
-                    passportNumber: passenger.passportNumber,
-                    passportExpiry: passenger.passportExpiry,
-                    passengerType: passenger.type,
-                  })),
-                },
-                updatedAt: new Date(),
+            if (!existingPassenger) {
+              this.logger.warn(
+                `Passenger ${passengerData.id} not found in booking ${id} during update`,
+              );
+              continue; // Skip this passenger
+            }
+
+            // Track changes for this passenger
+            const passengerChanges = {
+              id: passengerData.id,
+              oldData: {
+                firstName: existingPassenger.firstName,
+                lastName: existingPassenger.lastName,
+                nationality: existingPassenger.nationality,
+                passengerType: existingPassenger.passengerType,
               },
-              include: {
-                passengers: true,
-                flightSegments: {
-                  include: {
-                    flight: {
-                      include: {
-                        airline: true,
-                        departureAirport: true,
-                        arrivalAirport: true,
-                      },
+              newData: {
+                firstName: passengerData.firstName,
+                lastName: passengerData.lastName,
+                nationality: passengerData.nationality,
+                passengerType:
+                  passengerData.type || existingPassenger.passengerType,
+              },
+            };
+
+            changes.passengers.push(passengerChanges);
+
+            // Update the passenger with new data
+            await prisma.passenger.update({
+              where: { id: passengerData.id },
+              data: {
+                firstName: passengerData.firstName,
+                lastName: passengerData.lastName,
+                nationality: passengerData.nationality,
+                // Only update type if provided
+                ...(passengerData.type && {
+                  passengerType: passengerData.type,
+                }),
+              },
+            });
+          }
+
+          // Fetch the updated booking with all related data
+          updatedBooking = await prisma.booking.findUnique({
+            where: { id },
+            include: {
+              passengers: true,
+              flightSegments: {
+                include: {
+                  flight: {
+                    include: {
+                      airline: true,
+                      departureAirport: true,
+                      arrivalAirport: true,
                     },
                   },
                 },
-                user: true,
               },
-            });
+              user: true,
+            },
+          });
 
-            return booking;
-          },
-        );
+          return updatedBooking;
+        });
 
         // Regenerate ticket with updated passenger information
         this.logger.log(`Regenerating ticket for updated booking: ${id}`);
         const ticketUrl = await this.ticketService.generateAndStoreTicket(id);
-        console.log('ticket url', ticketUrl);
-        return updatedBooking;
+        // Note: The old ticket is already being deleted in the generateAndStoreTicket method
+
+        // Update the booking record with the new ticket URL
+        const finalBooking = await this.prisma.booking.update({
+          where: { id },
+          data: {
+            ticketUrl,
+            updatedAt: new Date(),
+          },
+          include: {
+            passengers: true,
+            flightSegments: {
+              include: {
+                flight: {
+                  include: {
+                    airline: true,
+                    departureAirport: true,
+                    arrivalAirport: true,
+                  },
+                },
+              },
+            },
+            user: true,
+          },
+        });
+
+        // Send booking update email
+        this.logger.log(`Sending booking update email for booking: ${id}`);
+        const userName =
+          `${finalBooking.user.firstName || ''} ${finalBooking.user.lastName || ''}`.trim() ||
+          'Valued Customer';
+        await this.emailService.sendBookingUpdate(
+          finalBooking.user.email,
+          userName,
+          finalBooking,
+          changes,
+          ticketUrl,
+        );
+
+        return finalBooking;
       } catch (error) {
         this.logger.error(`Error updating booking: ${error.message}`);
-        throw error;
+        throw new BadRequestException(
+          `Failed to update booking: ${error.message}`,
+        );
       }
     }
 

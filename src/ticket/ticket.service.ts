@@ -77,7 +77,26 @@ export class TicketService {
         .storage.from('bookings')
         .getPublicUrl(fileName);
 
-      // 6. Update the booking with the ticket URL
+      // 6. Delete the old ticket from Supabase if it exists
+      const existingBooking = await this.prisma.booking.findUnique({
+        where: { id: bookingId },
+        select: { ticketUrl: true },
+      });
+
+      try {
+        if (existingBooking?.ticketUrl) {
+          const oldFileName = existingBooking.ticketUrl.split('/').pop();
+          await this.supabaseService
+            .getClient()
+            .storage.from('bookings')
+            .remove([`tickets/${bookingId}/${oldFileName}`]);
+          this.logger.log(`Old ticket ${oldFileName} deleted successfully`);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to delete old ticket: ${error.message}`);
+      }
+
+      // 7. Update the booking with the new ticket URL
       await this.prisma.booking.update({
         where: { id: bookingId },
         data: {
@@ -85,7 +104,7 @@ export class TicketService {
         },
       });
 
-      // 7. Clean up the temporary file
+      // 8. Clean up the temporary file
       fs.unlinkSync(tempFilePath);
 
       return urlData.publicUrl;
