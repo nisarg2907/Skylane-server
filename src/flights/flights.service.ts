@@ -6,111 +6,113 @@ import { Flight, Airport, Airline } from '@prisma/client';
 @Injectable()
 export class FlightsService {
   constructor(private prisma: PrismaService) {}
-  async searchFlights(searchDto: SearchFlightsDto): Promise<Flight[]> {
-    const { from, to, departureDate, returnDate, cabinClass, tripType } =
-      searchDto;
 
-    console.log('Search criteria:', searchDto);
+  // One-way flights search
+  async searchOneWayFlights(
+    searchDto: SearchFlightsDto,
+  ): Promise<{ outboundFlights: Flight[]; returnFlights: Flight[] }> {
+    const { from, to, departureDate, cabinClass } = searchDto;
 
     const depDate = new Date(departureDate);
     const nextDay = new Date(departureDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    let returnDepDate;
-    let returnNextDay;
-
-    if (returnDate) {
-      returnDepDate = new Date(returnDate);
-      returnNextDay = new Date(returnDate);
-      returnNextDay.setDate(returnNextDay.getDate() + 1);
-    }
-
-    // Get current date for future flights
     const currentDate = new Date();
 
-    // For one-way trips
-    if (tripType === 'oneWay' || !returnDate) {
-      // Try to find flights with exact dates first
-      const exactDateFlights = await this.prisma.flight.findMany({
-        where: {
-          departureTime: {
-            gte: depDate,
-            lt: nextDay,
-          },
-          departureAirport: {
-            OR: [
-              { name: { contains: from, mode: 'insensitive' } },
-              { code: { contains: from, mode: 'insensitive' } },
-              { city: { contains: from, mode: 'insensitive' } },
-            ],
-          },
-          arrivalAirport: {
-            OR: [
-              { name: { contains: to, mode: 'insensitive' } },
-              { code: { contains: to, mode: 'insensitive' } },
-              { city: { contains: to, mode: 'insensitive' } },
-            ],
+    // Find one-way flights for the given criteria
+    const oneWayFlights = await this.prisma.flight.findMany({
+      where: {
+        departureTime: {
+          gte: depDate,
+          lt: nextDay,
+        },
+        departureAirport: {
+          OR: [
+            { name: { contains: from, mode: 'insensitive' } },
+            { code: { contains: from, mode: 'insensitive' } },
+            { city: { contains: from, mode: 'insensitive' } },
+          ],
+        },
+        arrivalAirport: {
+          OR: [
+            { name: { contains: to, mode: 'insensitive' } },
+            { code: { contains: to, mode: 'insensitive' } },
+            { city: { contains: to, mode: 'insensitive' } },
+          ],
+        },
+      },
+      include: {
+        airline: true,
+        departureAirport: true,
+        arrivalAirport: true,
+        flightSegments: {
+          where: {
+            cabinClass,
+            isReturn: false,
           },
         },
-        include: {
-          airline: true,
-          departureAirport: true,
-          arrivalAirport: true,
-          flightSegments: {
-            where: {
-              cabinClass,
-              isReturn: false,
-            },
-          },
-        },
-      });
+      },
+    });
 
-      // If we found flights with exact dates, return them
-      if (exactDateFlights.length > 0) {
-        return exactDateFlights;
-      }
-
-      // Otherwise, find future flights for the same route (one-way only)
-      return this.prisma.flight.findMany({
-        where: {
-          departureTime: {
-            gte: currentDate,
-          },
-          departureAirport: {
-            OR: [
-              { name: { contains: from, mode: 'insensitive' } },
-              { code: { contains: from, mode: 'insensitive' } },
-              { city: { contains: from, mode: 'insensitive' } },
-            ],
-          },
-          arrivalAirport: {
-            OR: [
-              { name: { contains: to, mode: 'insensitive' } },
-              { code: { contains: to, mode: 'insensitive' } },
-              { city: { contains: to, mode: 'insensitive' } },
-            ],
-          },
-        },
-        include: {
-          airline: true,
-          departureAirport: true,
-          arrivalAirport: true,
-          flightSegments: {
-            where: {
-              cabinClass,
-              isReturn: false,
-            },
-          },
-        },
-        orderBy: {
-          departureTime: 'asc', // Order by soonest departure
-        },
-        take: 10, // Limit results to avoid returning too many flights
-      });
+    if (oneWayFlights.length > 0) {
+      return { outboundFlights: oneWayFlights, returnFlights: [] };
     }
 
-    // For round trips
-    // Try to find outbound flights with exact dates
+    // If no flights found, return future flights
+    const futureFlights = await this.prisma.flight.findMany({
+      where: {
+        departureTime: {
+          gte: currentDate,
+        },
+        departureAirport: {
+          OR: [
+            { name: { contains: from, mode: 'insensitive' } },
+            { code: { contains: from, mode: 'insensitive' } },
+            { city: { contains: from, mode: 'insensitive' } },
+          ],
+        },
+        arrivalAirport: {
+          OR: [
+            { name: { contains: to, mode: 'insensitive' } },
+            { code: { contains: to, mode: 'insensitive' } },
+            { city: { contains: to, mode: 'insensitive' } },
+          ],
+        },
+      },
+      include: {
+        airline: true,
+        departureAirport: true,
+        arrivalAirport: true,
+        flightSegments: {
+          where: {
+            cabinClass,
+            isReturn: false,
+          },
+        },
+      },
+      orderBy: {
+        departureTime: 'asc',
+      },
+      take: 10,
+    });
+
+    return { outboundFlights: futureFlights, returnFlights: [] };
+  }
+
+  async searchRoundTripFlights(
+    searchDto: SearchFlightsDto,
+  ): Promise<{ outboundFlights: Flight[]; returnFlights: Flight[] }> {
+    const { from, to, departureDate, returnDate, cabinClass } = searchDto;
+
+    const depDate = new Date(departureDate);
+    const nextDay = new Date(departureDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    const returnDepDate = new Date(returnDate);
+    const returnNextDay = new Date(returnDate);
+    returnNextDay.setDate(returnNextDay.getDate() + 1);
+
+    // Search outbound flights (departure)
     const outboundFlights = await this.prisma.flight.findMany({
       where: {
         departureTime: {
@@ -145,7 +147,7 @@ export class FlightsService {
       },
     });
 
-    // Try to find return flights with exact dates
+    // Search return flights (return)
     const returnFlights = await this.prisma.flight.findMany({
       where: {
         departureTime: {
@@ -180,17 +182,19 @@ export class FlightsService {
       },
     });
 
-    // If both outbound and return flights are found with exact dates, return them
+    // If both outbound and return flights are found, return them as separate objects
     if (outboundFlights.length > 0 && returnFlights.length > 0) {
-      return [...outboundFlights, ...returnFlights];
+      return {
+        outboundFlights,
+        returnFlights,
+      };
     }
 
-    // If we couldn't find exact matches, handle fallback for round trips
-    // Get future outbound flights for the same route
+    // If no exact matches found, search for future flights
     const futureOutboundFlights = await this.prisma.flight.findMany({
       where: {
         departureTime: {
-          gte: currentDate,
+          gte: new Date(),
         },
         departureAirport: {
           OR: [
@@ -221,14 +225,12 @@ export class FlightsService {
       orderBy: {
         departureTime: 'asc',
       },
-      take: 5, // Limit results
+      take: 5,
     });
 
-    // For each outbound flight, find corresponding return flights
+    // Pair outbound and return flights
     const pairedFlights = [];
-
     for (const outbound of futureOutboundFlights) {
-      // Find return flights that depart after the outbound flight arrives
       const potentialReturnFlights = await this.prisma.flight.findMany({
         where: {
           departureTime: {
@@ -263,23 +265,21 @@ export class FlightsService {
         orderBy: {
           departureTime: 'asc',
         },
-        take: 2, // Limit to 2 return options per outbound flight
+        take: 2,
       });
 
       if (potentialReturnFlights.length > 0) {
-        // Add this outbound flight and its potential returns to the result
         pairedFlights.push(outbound, ...potentialReturnFlights);
       }
     }
 
-    // If we found paired flights, return them
-    if (pairedFlights.length > 0) {
-      return pairedFlights;
-    }
-
-    // If we couldn't find any paired flights, return an empty array
-    return [];
+    // Returning paired flights as outbound and return objects
+    return {
+      outboundFlights: futureOutboundFlights,
+      returnFlights: pairedFlights,
+    };
   }
+
   async getFlight(id: string): Promise<Flight> {
     const flight = await this.prisma.flight.findUnique({
       where: { id },

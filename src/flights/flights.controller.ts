@@ -8,10 +8,16 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 export class FlightsController {
   constructor(private readonly flightsService: FlightsService) {}
 
-  @Get()
-  @ApiOperation({ summary: 'Search for flights based on criteria' })
-  async searchFlights(@Query() searchFlightsDto: SearchFlightsDto) {
-    return this.flightsService.searchFlights(searchFlightsDto);
+  @Get('oneWay')
+  @ApiOperation({ summary: 'Search for one-way flights based on criteria' })
+  async searchOneWayFlights(@Query() searchFlightsDto: SearchFlightsDto) {
+    return this.flightsService.searchOneWayFlights(searchFlightsDto);
+  }
+
+  @Get('roundTrip')
+  @ApiOperation({ summary: 'Search for round-trip flights based on criteria' })
+  async searchRoundTripFlights(@Query() searchFlightsDto: SearchFlightsDto) {
+    return this.flightsService.searchRoundTripFlights(searchFlightsDto);
   }
 
   @Get('airports/all')

@@ -481,6 +481,24 @@ async function main() {
     { code: 'TP', name: 'TAP Air Portugal' },
   ];
 
+  for (const airport of airports) {
+    if (airportCodes.has(airport.code)) {
+      console.error(`Duplicate airport code found: ${airport.code}`);
+      throw new Error(`Duplicate airport code: ${airport.code}`);
+    }
+    airportCodes.add(airport.code);
+  }
+
+  for (const airport of airports) {
+    await prisma.airport.create({
+      data: airport,
+    });
+  }
+
+  // Seed airlines (using your existing airline data)
+  console.log('Seeding airlines...');
+  // [... your existing airline data ...]
+
   // Validate airline code uniqueness
   const airlineCodes = new Set();
   for (const airline of airlines) {
