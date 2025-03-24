@@ -16,9 +16,12 @@ export class TicketService {
   ) {}
 
   /**
-   * Generates a ticket PDF for a booking and stores it in Supabase
+   * Generates a ticket PDF for a booking (or specific segment) and stores it in Supabase
    */
-  async generateAndStoreTicket(bookingId: string): Promise<string> {
+  async generateAndStoreTicket(
+    bookingId: string,
+    segmentId?: string,
+  ): Promise<string> {
     try {
       // 1. Fetch the booking with all necessary data
       const booking = await this.prisma.booking.findUnique({
@@ -44,14 +47,29 @@ export class TicketService {
         throw new Error(`Booking with ID ${bookingId} not found`);
       }
 
+      // Filter segments if segmentId is provided
+      const segmentsToInclude = segmentId
+        ? booking.flightSegments.filter((s) => s.id === segmentId)
+        : booking.flightSegments;
+
+      if (segmentsToInclude.length === 0) {
+        throw new Error('No matching flight segments found');
+      }
+
       // 2. Generate a temporary file path for the PDF
       const tempFilePath = path.join(
         os.tmpdir(),
-        `ticket-${bookingId}-${Date.now()}.pdf`,
+        `ticket-${bookingId}-${segmentId || 'all'}-${Date.now()}.pdf`,
       );
 
-      // 3. Generate the PDF
-      await this.createTicketPDF(booking, tempFilePath);
+      // 3. Generate the PDF with filtered segments
+      await this.createTicketPDF(
+        {
+          ...booking,
+          flightSegments: segmentsToInclude,
+        },
+        tempFilePath,
+      );
 
       // 4. Upload the PDF to Supabase Storage
       const fileData = fs.readFileSync(tempFilePath);
@@ -77,32 +95,33 @@ export class TicketService {
         .storage.from('bookings')
         .getPublicUrl(fileName);
 
-      // 6. Delete the old ticket from Supabase if it exists
-      const existingBooking = await this.prisma.booking.findUnique({
-        where: { id: bookingId },
-        select: { ticketUrl: true },
-      });
-
+      // 6. Delete old ticket files for this segment if they exist
       try {
-        if (existingBooking?.ticketUrl) {
-          const oldFileName = existingBooking.ticketUrl.split('/').pop();
-          await this.supabaseService
-            .getClient()
-            .storage.from('bookings')
-            .remove([`tickets/${bookingId}/${oldFileName}`]);
-          this.logger.log(`Old ticket ${oldFileName} deleted successfully`);
+        if (segmentId) {
+          const existingSegment = await this.prisma.flightSegment.findUnique({
+            where: { id: segmentId },
+            select: { ticketUrl: true },
+          });
+
+          if (existingSegment?.ticketUrl) {
+            const oldFileName = existingSegment.ticketUrl.split('/').pop();
+            await this.supabaseService
+              .getClient()
+              .storage.from('bookings')
+              .remove([`tickets/${bookingId}/${oldFileName}`]);
+          }
         }
       } catch (error) {
         this.logger.error(`Failed to delete old ticket: ${error.message}`);
       }
 
-      // 7. Update the booking with the new ticket URL
-      await this.prisma.booking.update({
-        where: { id: bookingId },
-        data: {
-          ticketUrl: urlData.publicUrl,
-        },
-      });
+      // 7. Update the flight segment with the new ticket URL
+      if (segmentId) {
+        await this.prisma.flightSegment.update({
+          where: { id: segmentId },
+          data: { ticketUrl: urlData.publicUrl },
+        });
+      }
 
       // 8. Clean up the temporary file
       fs.unlinkSync(tempFilePath);

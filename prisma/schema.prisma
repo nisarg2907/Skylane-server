@@ -140,7 +140,6 @@ model Booking {
   status            BookingStatus @default(PENDING)
   bookingDate       DateTime  @default(now())
   paymentStatus     String    // PAID, PENDING, FAILED
-  ticketUrl         String?  
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   
@@ -176,6 +175,7 @@ model FlightSegment {
   flightId          String
   cabinClass        CabinClass
   fareAmount        Float
+  ticketUrl         String?
   
   // For round-trip identification
   isReturn          Boolean   @default(false)

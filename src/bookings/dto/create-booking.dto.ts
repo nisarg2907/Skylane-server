@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsNotEmpty,
@@ -70,11 +71,11 @@ export class FlightSegmentDto {
   fareAmount: number;
 
   @ApiProperty({ required: false, default: false })
+  @IsBoolean()
   @IsOptional()
-  isReturn?: boolean;
+  isReturn?: boolean = false;
 }
 
-// New DTO to handle the frontend format
 export class CreateBookingDto {
   @ApiProperty()
   @IsNumber()
@@ -87,25 +88,19 @@ export class CreateBookingDto {
   @Type(() => PassengerDto)
   passengers: PassengerDto[];
 
-  @ApiProperty({ required: false })
+  @ApiProperty()
   @IsString()
-  @IsOptional()
-  flightId?: string;
+  @IsNotEmpty()
+  paymentMethodId: string;
 
-  @ApiProperty({ enum: CabinClass, required: false })
-  @IsEnum(CabinClass)
+  @ApiProperty({ required: false, default: false })
+  @IsBoolean()
   @IsOptional()
-  cabinClass?: CabinClass;
+  isRoundTrip?: boolean = false;
 
-  @ApiProperty({ type: [FlightSegmentDto], required: false })
+  @ApiProperty({ type: [FlightSegmentDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => FlightSegmentDto)
-  @IsOptional()
-  flightSegments?: FlightSegmentDto[];
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  paymentMethodId?: string;
+  flightSegments: FlightSegmentDto[];
 }

@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateBookingDto, FlightSegmentDto } from './dto/create-booking.dto';
+import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { Booking, BookingStatus, PassengerType } from '@prisma/client';
 import { FlightsService } from 'src/flights/flights.service';
@@ -26,9 +26,7 @@ export class BookingsService {
 
   async getUserBookings(userId: string) {
     const bookings = await this.prisma.booking.findMany({
-      where: {
-        userId,
-      },
+      where: { userId },
       include: {
         passengers: true,
         flightSegments: {
@@ -43,9 +41,7 @@ export class BookingsService {
           },
         },
       },
-      orderBy: {
-        bookingDate: 'desc',
-      },
+      orderBy: { bookingDate: 'desc' },
     });
 
     return bookings.map((booking) => {
@@ -61,19 +57,18 @@ export class BookingsService {
         ).length,
       };
 
-      const flightSegment = booking.flightSegments[0];
+      const outboundSegment = booking.flightSegments.find((s) => !s.isReturn);
+      const returnSegment = booking.flightSegments.find((s) => s.isReturn);
 
       return {
         id: booking.id,
-        flightNumber: flightSegment.flight.flightNumber,
-        from: flightSegment.flight.departureAirport.code,
-        to: flightSegment.flight.arrivalAirport.code,
-        departureDate: flightSegment.flight.departureTime.toISOString(),
-        returnDate: flightSegment.isReturn
-          ? flightSegment.flight.arrivalTime.toISOString()
-          : undefined,
+        flightNumber: outboundSegment.flight.flightNumber,
+        from: outboundSegment.flight.departureAirport.code,
+        to: outboundSegment.flight.arrivalAirport.code,
+        departureDate: outboundSegment.flight.departureTime.toISOString(),
+        returnDate: returnSegment?.flight.arrivalTime.toISOString(),
         passengers,
-        cabinClass: flightSegment.cabinClass.toLowerCase() as
+        cabinClass: outboundSegment.cabinClass.toLowerCase() as
           | 'economy'
           | 'premium'
           | 'business'
@@ -81,7 +76,8 @@ export class BookingsService {
         status: booking.status.toLowerCase() as 'confirmed' | 'cancelled',
         price: booking.totalAmount,
         bookingDate: booking.bookingDate.toISOString(),
-        ticketUrl: booking.ticketUrl ?? '',
+        ticketUrl: outboundSegment.ticketUrl ?? '',
+        returnTicketUrl: returnSegment?.ticketUrl,
       };
     });
   }
@@ -123,33 +119,15 @@ export class BookingsService {
     createBookingDto: CreateBookingDto,
     userId: string,
   ): Promise<Booking> {
-    const { passengers, totalAmount, paymentMethodId } = createBookingDto;
+    const {
+      passengers,
+      totalAmount,
+      paymentMethodId,
+      flightSegments,
+      isRoundTrip,
+    } = createBookingDto;
 
-    // Handle both formats: either flightSegments array or single flightId/cabinClass
-    let flightSegments: FlightSegmentDto[] = [];
-
-    if (
-      createBookingDto.flightSegments &&
-      createBookingDto.flightSegments.length > 0
-    ) {
-      flightSegments = createBookingDto.flightSegments;
-    } else if (createBookingDto.flightId && createBookingDto.cabinClass) {
-      // Convert old format to new format
-      flightSegments = [
-        {
-          flightId: createBookingDto.flightId,
-          cabinClass: createBookingDto.cabinClass,
-          fareAmount: totalAmount, // Assuming the total is the fare for this flight
-          isReturn: false,
-        },
-      ];
-    } else {
-      throw new Error(
-        'Either flightSegments array or flightId with cabinClass must be provided',
-      );
-    }
-
-    // Validate that all flights exist
+    // Validate flights
     for (const segment of flightSegments) {
       const flight = await this.flightsService.getFlight(segment.flightId);
       if (!flight) {
@@ -157,28 +135,24 @@ export class BookingsService {
       }
     }
 
-    // Create the booking with a transaction to ensure data consistency
     try {
       const booking = await this.prisma.$transaction(async (prisma) => {
-        // Create booking record
-        const newBooking = await prisma.booking.create({
+        // Create booking with segments (ticketUrl will be added later)
+        return await prisma.booking.create({
           data: {
             userId,
             totalAmount,
             status: BookingStatus.CONFIRMED,
             paymentStatus: 'COMPLETED',
             paymentMethodId,
-            // Create flight segments
             flightSegments: {
               create: flightSegments.map((segment) => ({
                 flightId: segment.flightId,
                 cabinClass: segment.cabinClass,
-                fareAmount: segment.fareAmount || totalAmount, // Fallback to total amount if not provided
+                fareAmount: segment.fareAmount,
                 isReturn: segment.isReturn || false,
               })),
             },
-
-            // Create passenger records with support for both type and passengerType
             passengers: {
               create: passengers.map((passenger) => ({
                 firstName: passenger.firstName,
@@ -207,37 +181,98 @@ export class BookingsService {
             user: true,
           },
         });
-
-        return newBooking;
       });
 
-      // Generate ticket PDF and get URL
-      this.logger.log(`Generating ticket for booking: ${booking.id}`);
-      const ticketUrl = await this.ticketService.generateAndStoreTicket(
-        booking.id,
-      );
-      console.log('ticket url', ticketUrl);
+      // Handle ticket generation and emails
+      if (isRoundTrip && flightSegments.length === 2) {
+        const [outboundSegment, returnSegment] = booking.flightSegments;
 
-      // Send confirmation email
-      this.logger.log(
-        `Sending booking confirmation email for booking: ${booking.id}`,
-      );
-      const userName =
-        `${booking.user.firstName || ''} ${booking.user.lastName || ''}`.trim() ||
-        'Valued Customer';
-      await this.emailService.sendBookingConfirmation(
-        booking.user.email,
-        userName,
-        booking,
-        ticketUrl,
-      );
+        // Generate and store tickets for each segment
+        const outboundTicketUrl =
+          await this.ticketService.generateAndStoreTicket(
+            booking.id,
+            outboundSegment.id,
+          );
+        const returnTicketUrl = await this.ticketService.generateAndStoreTicket(
+          booking.id,
+          returnSegment.id,
+        );
 
-      return booking;
+        // Send confirmation emails
+        const userName =
+          `${booking.user.firstName || ''} ${booking.user.lastName || ''}`.trim() ||
+          'Valued Customer';
+
+        // Outbound email
+        await this.emailService.sendBookingConfirmation(
+          booking.user.email,
+          userName,
+          {
+            ...booking,
+            flightSegments: [outboundSegment],
+            ticketUrl: outboundTicketUrl,
+          },
+          outboundTicketUrl,
+        );
+
+        // Return email
+        await this.emailService.sendBookingConfirmation(
+          booking.user.email,
+          userName,
+          {
+            ...booking,
+            flightSegments: [returnSegment],
+            ticketUrl: returnTicketUrl,
+          },
+          returnTicketUrl,
+        );
+      } else {
+        // Single flight
+        const segment = booking.flightSegments[0];
+        const ticketUrl = await this.ticketService.generateAndStoreTicket(
+          booking.id,
+          segment.id,
+        );
+
+        const userName =
+          `${booking.user.firstName || ''} ${booking.user.lastName || ''}`.trim() ||
+          'Valued Customer';
+        await this.emailService.sendBookingConfirmation(
+          booking.user.email,
+          userName,
+          {
+            ...booking,
+            ticketUrl,
+          },
+          ticketUrl,
+        );
+      }
+
+      // Return the updated booking with ticket URLs
+      return await this.prisma.booking.findUnique({
+        where: { id: booking.id },
+        include: {
+          passengers: true,
+          flightSegments: {
+            include: {
+              flight: {
+                include: {
+                  airline: true,
+                  departureAirport: true,
+                  arrivalAirport: true,
+                },
+              },
+            },
+          },
+          user: true,
+        },
+      });
     } catch (error) {
       this.logger.error(`Error creating booking: ${error.message}`);
       throw error;
     }
   }
+
   async updateBooking(
     id: string,
     updateBookingDto: UpdateBookingDto,
@@ -263,17 +298,14 @@ export class BookingsService {
     if (passengers && passengers.length > 0) {
       try {
         let updatedBooking;
-
-        // Track changes to report in email
         const changes = {
           passengers: [],
         };
 
         // Transaction to ensure data consistency
         await this.prisma.$transaction(async (prisma) => {
-          // Update each passenger individually instead of deleting and recreating
+          // Update each passenger
           for (const passengerData of passengers) {
-            // Verify the passenger belongs to this booking
             const existingPassenger = await prisma.passenger.findFirst({
               where: {
                 id: passengerData.id,
@@ -285,11 +317,10 @@ export class BookingsService {
               this.logger.warn(
                 `Passenger ${passengerData.id} not found in booking ${id} during update`,
               );
-              continue; // Skip this passenger
+              continue;
             }
 
-            // Track changes for this passenger
-            const passengerChanges = {
+            changes.passengers.push({
               id: passengerData.id,
               oldData: {
                 firstName: existingPassenger.firstName,
@@ -304,18 +335,14 @@ export class BookingsService {
                 passengerType:
                   passengerData.type || existingPassenger.passengerType,
               },
-            };
+            });
 
-            changes.passengers.push(passengerChanges);
-
-            // Update the passenger with new data
             await prisma.passenger.update({
               where: { id: passengerData.id },
               data: {
                 firstName: passengerData.firstName,
                 lastName: passengerData.lastName,
                 nationality: passengerData.nationality,
-                // Only update type if provided
                 ...(passengerData.type && {
                   passengerType: passengerData.type,
                 }),
@@ -323,7 +350,7 @@ export class BookingsService {
             });
           }
 
-          // Fetch the updated booking with all related data
+          // Fetch the updated booking
           updatedBooking = await prisma.booking.findUnique({
             where: { id },
             include: {
@@ -346,18 +373,27 @@ export class BookingsService {
           return updatedBooking;
         });
 
-        // Regenerate ticket with updated passenger information
-        this.logger.log(`Regenerating ticket for updated booking: ${id}`);
-        const ticketUrl = await this.ticketService.generateAndStoreTicket(id);
-        // Note: The old ticket is already being deleted in the generateAndStoreTicket method
+        // Regenerate tickets for all segments with updated passenger info
+        this.logger.log(`Regenerating tickets for updated booking: ${id}`);
 
-        // Update the booking record with the new ticket URL
-        const finalBooking = await this.prisma.booking.update({
-          where: { id },
-          data: {
-            ticketUrl,
-            updatedAt: new Date(),
+        const updatePromises = updatedBooking.flightSegments.map(
+          async (segment) => {
+            const ticketUrl = await this.ticketService.generateAndStoreTicket(
+              id,
+              segment.id,
+            );
+            return this.prisma.flightSegment.update({
+              where: { id: segment.id },
+              data: { ticketUrl },
+            });
           },
+        );
+
+        await Promise.all(updatePromises);
+
+        // Get the final updated booking
+        const finalBooking = await this.prisma.booking.findUnique({
+          where: { id },
           include: {
             passengers: true,
             flightSegments: {
@@ -375,17 +411,19 @@ export class BookingsService {
           },
         });
 
-        // Send booking update email
+        // Send booking update email with the first segment's ticket
+        const firstSegment = finalBooking.flightSegments[0];
         this.logger.log(`Sending booking update email for booking: ${id}`);
         const userName =
           `${finalBooking.user.firstName || ''} ${finalBooking.user.lastName || ''}`.trim() ||
           'Valued Customer';
+
         await this.emailService.sendBookingUpdate(
           finalBooking.user.email,
           userName,
           finalBooking,
           changes,
-          ticketUrl,
+          firstSegment.ticketUrl,
         );
 
         return finalBooking;
@@ -400,7 +438,6 @@ export class BookingsService {
     // If no changes provided, return the existing booking
     return existingBooking;
   }
-
   async cancelBooking(id: string, userId: string): Promise<Booking> {
     // First check if booking exists and belongs to user
     const existingBooking = await this.getBooking(id, userId);
@@ -444,6 +481,7 @@ export class BookingsService {
       const userName =
         `${cancelledBooking.user.firstName || ''} ${cancelledBooking.user.lastName || ''}`.trim() ||
         'Valued Customer';
+
       await this.emailService.sendBookingCancellation(
         cancelledBooking.user.email,
         userName,
@@ -453,50 +491,6 @@ export class BookingsService {
       return cancelledBooking;
     } catch (error) {
       this.logger.error(`Error cancelling booking: ${error.message}`);
-      throw error;
-    }
-  }
-
-  // Optional: Add a method to manually resend confirmation email with ticket
-  async resendBookingConfirmation(id: string, userId: string): Promise<void> {
-    const booking = await this.getBooking(id, userId);
-
-    if (booking.status === BookingStatus.CANCELLED) {
-      throw new BadRequestException(
-        'Cannot resend confirmation for cancelled booking',
-      );
-    }
-
-    try {
-      // Get or regenerate ticket URL
-      let ticketUrl = booking.ticketUrl;
-      if (!ticketUrl) {
-        ticketUrl = await this.ticketService.generateAndStoreTicket(id);
-      }
-
-      // Fetch user info
-      const user = await this.prisma.user.findUnique({
-        where: { authId: booking.userId },
-      });
-
-      if (!user) {
-        throw new NotFoundException('User not found');
-      }
-
-      // Send email
-      const userName =
-        `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
-        'Valued Customer';
-      await this.emailService.sendBookingConfirmation(
-        user.email,
-        userName,
-        booking,
-        ticketUrl,
-      );
-
-      this.logger.log(`Resent booking confirmation email for booking: ${id}`);
-    } catch (error) {
-      this.logger.error(`Error resending confirmation: ${error.message}`);
       throw error;
     }
   }
