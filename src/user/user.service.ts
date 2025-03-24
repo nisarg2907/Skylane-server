@@ -17,7 +17,7 @@ export class UserService {
   ) {}
 
   async getUser(authId: string): Promise<User> {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.user.findFirst({
       where: { authId },
     });
 
@@ -32,8 +32,8 @@ export class UserService {
     authId: string,
     updateUserDto: UpdateUserDto,
   ): Promise<User> {
-    const user = await this.prisma.user.findUnique({
-      where: { authId },
+    const user = await this.prisma.user.findFirst({
+      where: { authId: authId },
     });
 
     if (!user) {
@@ -98,10 +98,14 @@ export class UserService {
       data: {
         userId: user.id,
         lastFourDigits,
-        expiryMonth: parseInt(restDto.expiryMonth),
-        expiryYear: parseInt(restDto.expiryYear),
-        cardHolderName: restDto.cardHolderName,
-        cardType: restDto.cardType,
+        expiryMonth: this.encryptionService.encrypt(
+          restDto.expiryMonth.toString(),
+        ),
+        expiryYear: this.encryptionService.encrypt(
+          restDto.expiryYear.toString(),
+        ),
+        cardHolderName: this.encryptionService.encrypt(restDto.cardHolderName),
+        cardType: this.encryptionService.encrypt(restDto.cardType),
         isDefault: restDto.isDefault || false,
       },
     });
@@ -244,11 +248,17 @@ export class UserService {
   ): PaymentMethodResponseDto {
     return {
       id: paymentMethod.id,
-      cardHolderName: paymentMethod.cardHolderName,
-      cardType: paymentMethod.cardType,
+      cardHolderName: this.encryptionService.decrypt(
+        paymentMethod.cardHolderName,
+      ),
+      cardType: this.encryptionService.decrypt(paymentMethod.cardType),
       lastFourDigits: paymentMethod.lastFourDigits,
-      expiryMonth: paymentMethod.expiryMonth,
-      expiryYear: paymentMethod.expiryYear,
+      expiryMonth: parseInt(
+        this.encryptionService.decrypt(paymentMethod.expiryMonth),
+      ),
+      expiryYear: parseInt(
+        this.encryptionService.decrypt(paymentMethod.expiryYear),
+      ),
       isDefault: paymentMethod.isDefault,
       createdAt: paymentMethod.createdAt,
       updatedAt: paymentMethod.updatedAt,

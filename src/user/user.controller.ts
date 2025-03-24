@@ -9,6 +9,7 @@ import {
   UseGuards,
   Request,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { AuthGuard } from 'src/gaurds/auth.gaurd';
@@ -32,6 +33,8 @@ import {
 @ApiBearerAuth()
 @UseGuards(AuthGuard)
 export class UserController {
+  private readonly logger = new Logger(UserController.name);
+
   constructor(private readonly userService: UserService) {}
 
   @Get('profile')
@@ -42,7 +45,8 @@ export class UserController {
     type: UserResponseDto,
   })
   async getProfile(@Request() req): Promise<UserResponseDto> {
-    return this.userService.getUser(req.user.authId);
+    this.logger.log('GET /users/profile');
+    return this.userService.getUser(req.user);
   }
 
   @Patch('profile')
@@ -56,7 +60,9 @@ export class UserController {
     @Request() req,
     @Body() updateUserDto: UpdateUserDto,
   ): Promise<UserResponseDto> {
-    return this.userService.updateUser(req.user.authId, updateUserDto);
+    this.logger.log('PATCH /users/profile');
+    console.log('user id', req.user);
+    return this.userService.updateUser(req.user.id, updateUserDto);
   }
 
   @Get('payment-methods')
@@ -67,6 +73,7 @@ export class UserController {
     type: [PaymentMethodResponseDto],
   })
   async getPaymentMethods(@Request() req): Promise<PaymentMethodResponseDto[]> {
+    this.logger.log('GET /users/payment-methods');
     return this.userService.getUserPaymentMethods(req.user.authId);
   }
 
@@ -81,6 +88,7 @@ export class UserController {
     @Request() req,
     @Body() createPaymentMethodDto: CreatePaymentMethodDto,
   ): Promise<PaymentMethodResponseDto> {
+    this.logger.log('POST /users/payment-methods');
     return this.userService.createPaymentMethod(
       req.user.authId,
       createPaymentMethodDto,
@@ -103,6 +111,7 @@ export class UserController {
     @Request() req,
     @Param('id') id: string,
   ): Promise<PaymentMethodResponseDto> {
+    this.logger.log(`GET /users/payment-methods/${id}`);
     return this.userService.getPaymentMethod(req.user.authId, id);
   }
 
@@ -123,6 +132,7 @@ export class UserController {
     @Param('id') id: string,
     @Body() updatePaymentMethodDto: UpdatePaymentMethodDto,
   ): Promise<PaymentMethodResponseDto> {
+    this.logger.log(`PATCH /users/payment-methods/${id}`);
     return this.userService.updatePaymentMethod(
       req.user.authId,
       id,
@@ -145,6 +155,7 @@ export class UserController {
     @Request() req,
     @Param('id') id: string,
   ): Promise<void> {
+    this.logger.log(`DELETE /users/payment-methods/${id}`);
     return this.userService.deletePaymentMethod(req.user.authId, id);
   }
 
@@ -164,6 +175,7 @@ export class UserController {
     @Request() req,
     @Param('id') id: string,
   ): Promise<PaymentMethodResponseDto> {
+    this.logger.log(`POST /users/payment-methods/${id}/default`);
     return this.userService.setDefaultPaymentMethod(req.user.authId, id);
   }
 }
