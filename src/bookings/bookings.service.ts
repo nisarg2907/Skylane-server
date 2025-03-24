@@ -123,7 +123,7 @@ export class BookingsService {
     createBookingDto: CreateBookingDto,
     userId: string,
   ): Promise<Booking> {
-    const { passengers, totalAmount } = createBookingDto;
+    const { passengers, totalAmount, paymentMethodId } = createBookingDto;
 
     // Handle both formats: either flightSegments array or single flightId/cabinClass
     let flightSegments: FlightSegmentDto[] = [];
@@ -167,7 +167,7 @@ export class BookingsService {
             totalAmount,
             status: BookingStatus.CONFIRMED,
             paymentStatus: 'COMPLETED',
-
+            paymentMethodId,
             // Create flight segments
             flightSegments: {
               create: flightSegments.map((segment) => ({

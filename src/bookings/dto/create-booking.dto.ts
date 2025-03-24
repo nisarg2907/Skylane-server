@@ -103,4 +103,9 @@ export class CreateBookingDto {
   @Type(() => FlightSegmentDto)
   @IsOptional()
   flightSegments?: FlightSegmentDto[];
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  paymentMethodId?: string;
 }
