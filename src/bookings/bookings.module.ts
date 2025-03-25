@@ -6,9 +6,10 @@ import { FlightsModule } from '../flights/flights.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { TicketModule } from 'src/ticket/ticket.module';
 import { EmailModule } from 'src/email/email.module';
+import { SseModule } from 'src/sse/sse.module';
 
 @Module({
-  imports: [FlightsModule, AuthModule, TicketModule, EmailModule],
+  imports: [FlightsModule, AuthModule, TicketModule, EmailModule, SseModule],
   controllers: [BookingsController],
   providers: [BookingsService, PrismaService],
 })

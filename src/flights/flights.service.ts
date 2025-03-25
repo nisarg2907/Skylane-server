@@ -25,39 +25,55 @@ export class FlightsService {
     flightId: string,
     cabinClass: CabinClass,
   ): Promise<number> {
+    console.log(
+      `getAvailableSeats called with flightId: ${flightId}, cabinClass: ${cabinClass}`,
+    );
     const capacityField = this.getCapacityField(cabinClass);
+    console.log(`Capacity field determined: ${capacityField}`);
 
     const flight = await this.prisma.flight.findUnique({
       where: { id: flightId },
-      select: {
-        [capacityField]: true,
-      },
     });
 
     if (!flight) {
+      console.log(`Flight not found for flightId: ${flightId}`);
       return 0;
     }
 
+    console.log(`Flight found: ${JSON.stringify(flight)}`);
+
     // Safely convert capacity to number (fallback to 0 if null/undefined)
     const capacity = Number(flight[capacityField]) || 0;
+    console.log(
+      `Capacity for flightId ${flightId}: ${capacity}`,
+      capacityField,
+    );
 
     // Return available seats (ensure it's never negative)
-    return Math.max(0, capacity);
+    const availableSeats = Math.max(0, capacity);
+    console.log(`Available seats for flightId ${flightId}: ${availableSeats}`);
+    return availableSeats;
   }
 
   // Updated one-way flights search with seat availability check
   async searchOneWayFlights(
     searchDto: SearchFlightsDto,
   ): Promise<{ outboundFlights: Flight[]; returnFlights: Flight[] }> {
+    console.log(
+      `searchOneWayFlights called with searchDto: ${JSON.stringify(searchDto)}`,
+    );
     const { from, to, departureDate, cabinClass, passengers } = searchDto;
     const totalPassengers =
       Number(passengers?.adult || 0) + Number(passengers?.child || 0);
+    console.log(`Total passengers: ${totalPassengers}`);
 
     const depDate = new Date(departureDate);
     const nextDay = new Date(departureDate);
     nextDay.setDate(nextDay.getDate() + 1);
+    console.log(`Departure date range: ${depDate} to ${nextDay}`);
 
     const currentDate = new Date();
+    console.log(`Current date: ${currentDate}`);
 
     // Find one-way flights for the given criteria
     const oneWayFlights = await this.prisma.flight.findMany({
@@ -94,6 +110,8 @@ export class FlightsService {
       },
     });
 
+    console.log(`One-way flights found: ${oneWayFlights.length}`);
+
     // Filter flights based on available seats
     const availableFlights = [];
     for (const flight of oneWayFlights) {
@@ -101,10 +119,15 @@ export class FlightsService {
         flight.id,
         cabinClass,
       );
+      console.log(
+        `Flight ID: ${flight.id}, Available seats: ${availableSeats}`,
+      );
       if (availableSeats >= totalPassengers) {
         availableFlights.push(flight);
       }
     }
+
+    console.log(`Available one-way flights: ${availableFlights.length}`);
 
     if (availableFlights.length > 0) {
       return { outboundFlights: availableFlights, returnFlights: [] };
@@ -148,6 +171,8 @@ export class FlightsService {
       take: 10,
     });
 
+    console.log(`Future flights found: ${futureFlights.length}`);
+
     // Filter future flights based on available seats
     const availableFutureFlights = [];
     for (const flight of futureFlights) {
@@ -155,10 +180,15 @@ export class FlightsService {
         flight.id,
         cabinClass,
       );
+      console.log(
+        `Future Flight ID: ${flight.id}, Available seats: ${availableSeats}`,
+      );
       if (availableSeats >= totalPassengers) {
         availableFutureFlights.push(flight);
       }
     }
+
+    console.log(`Available future flights: ${availableFutureFlights.length}`);
 
     return { outboundFlights: availableFutureFlights, returnFlights: [] };
   }

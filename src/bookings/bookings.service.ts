@@ -17,6 +17,7 @@ import {
 import { FlightsService } from 'src/flights/flights.service';
 import { EmailService } from 'src/email/email.service';
 import { TicketService } from 'src/ticket/ticket.service';
+import { SseService } from 'src/sse/sse.service';
 
 @Injectable()
 export class BookingsService {
@@ -27,8 +28,8 @@ export class BookingsService {
     private flightsService: FlightsService,
     private emailService: EmailService,
     private ticketService: TicketService,
+    private sseService: SseService,
   ) {}
-
   private async updateFlightSeats(
     flightId: string,
     cabinClass: CabinClass,
@@ -43,7 +44,7 @@ export class BookingsService {
       throw new NotFoundException(`Flight with ID ${flightId} not found`);
     }
 
-    // Determine which capacity and price field to update based on cabin class
+    // Determine which capacity field to update based on cabin class
     let capacityField: string;
     switch (cabinClass) {
       case CabinClass.ECONOMY:
@@ -62,15 +63,28 @@ export class BookingsService {
         throw new BadRequestException('Invalid cabin class');
     }
 
+    // Calculate new capacity
+    const currentCapacity = flight[capacityField] || 0;
+    const newCapacity = isAdding
+      ? currentCapacity + passengerCount
+      : currentCapacity - passengerCount;
+
     // Update the capacity
     await this.prisma.flight.update({
       where: { id: flightId },
       data: {
-        [capacityField]: isAdding
-          ? { increment: passengerCount }
-          : { decrement: passengerCount },
+        [capacityField]: newCapacity,
       },
     });
+
+    // Send SSE update with new available seats
+    this.sseService.sendSeatUpdate(
+      flightId,
+      cabinClass.toLowerCase(),
+      newCapacity,
+    );
+
+    return newCapacity;
   }
 
   async getUserBookings(userId: string) {

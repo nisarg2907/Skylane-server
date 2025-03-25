@@ -14,6 +14,7 @@ import { EmailModule } from './email/email.module';
 import { UserModule } from './user/user.module';
 import { EcryptionModule } from './ecryption/ecryption.module';
 import { EncryptionService } from './encryption/encryption.service';
+import { SseModule } from './sse/sse.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { EncryptionService } from './encryption/encryption.service';
     EmailModule,
     UserModule,
     EcryptionModule,
+    SseModule,
   ],
   controllers: [AppController],
   providers: [AppService, TicketService, EmailService, EncryptionService],
