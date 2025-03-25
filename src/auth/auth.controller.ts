@@ -23,8 +23,6 @@ export class AuthController {
       lastName?: string;
     },
   ) {
-    console.log('Sync user request received:', userData);
-
     // Update or create user in your database
     const user = await this.authService.findOrCreateUser(
       userData.authId,
@@ -32,8 +30,6 @@ export class AuthController {
       userData.firstName,
       userData.lastName,
     );
-
-    console.log('User synced successfully:', user);
 
     return user;
   }

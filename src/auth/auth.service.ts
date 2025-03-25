@@ -31,25 +31,12 @@ export class AuthService {
     firstName?: string,
     lastName?: string,
   ) {
-    console.log('findOrCreateUser called with:', {
-      authId,
-      email,
-      firstName,
-      lastName,
-    });
-
     // Check if user exists
     let user = await this.prisma.user.findUnique({
       where: { email },
     });
 
     if (user) {
-      console.log('User found, updating user:', {
-        authId,
-        email,
-        firstName,
-        lastName,
-      });
       // Update user if it exists
       user = await this.prisma.user.update({
         where: { authId },
@@ -59,14 +46,7 @@ export class AuthService {
           lastName,
         },
       });
-      console.log('User updated successfully:', user);
     } else {
-      console.log('User not found, creating new user:', {
-        authId,
-        email,
-        firstName,
-        lastName,
-      });
       // Create user if not exists
       user = await this.prisma.user.create({
         data: {
@@ -76,7 +56,6 @@ export class AuthService {
           lastName,
         },
       });
-      console.log('User created successfully:', user);
     }
 
     return user;
