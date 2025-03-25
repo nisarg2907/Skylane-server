@@ -211,6 +211,39 @@ export class BookingsService {
       bookingDate: booking.bookingDate.toISOString(),
     };
   }
+  private async getAvailableSeats(
+    flightId: string,
+    cabinClass: CabinClass,
+  ): Promise<number> {
+    const flight = await this.prisma.flight.findUnique({
+      where: { id: flightId },
+    });
+
+    if (!flight) {
+      throw new NotFoundException(`Flight with ID ${flightId} not found`);
+    }
+
+    // Determine which capacity field to check based on cabin class
+    let capacity: number;
+    switch (cabinClass) {
+      case CabinClass.ECONOMY:
+        capacity = flight.economyCapacity;
+        break;
+      case CabinClass.PREMIUM_ECONOMY:
+        capacity = flight.premiumEconomyCapacity || 0;
+        break;
+      case CabinClass.BUSINESS:
+        capacity = flight.businessCapacity || 0;
+        break;
+      case CabinClass.FIRST:
+        capacity = flight.firstClassCapacity || 0;
+        break;
+      default:
+        throw new BadRequestException('Invalid cabin class');
+    }
+
+    return capacity;
+  }
   async createBooking(
     createBookingDto: CreateBookingDto,
     userId: string,
@@ -222,6 +255,21 @@ export class BookingsService {
       flightSegments,
       isRoundTrip,
     } = createBookingDto;
+
+    // First check seat availability for all segments
+    for (const segment of flightSegments) {
+      const availableSeats = await this.getAvailableSeats(
+        segment.flightId,
+        segment.cabinClass,
+      );
+
+      if (availableSeats < passengers.length) {
+        throw new BadRequestException(
+          `Not enough available seats in ${segment.cabinClass} class for flight ${segment.flightId}. ` +
+            `Requested: ${passengers.length}, Available: ${availableSeats}`,
+        );
+      }
+    }
 
     // Validate flights and update seat availability
     for (const segment of flightSegments) {

@@ -5,8 +5,24 @@ import {
   IsNotEmpty,
   IsString,
   IsOptional,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CabinClass } from '@prisma/client';
+
+export class PassengerCount {
+  @ApiProperty({ description: 'Number of adult passengers' })
+  @IsOptional()
+  adult?: number = 1;
+
+  @ApiProperty({ description: 'Number of child passengers' })
+  @IsOptional()
+  child?: number = 0;
+
+  @ApiProperty({ description: 'Number of infant passengers' })
+  @IsOptional()
+  infant?: number = 0;
+}
 
 export class SearchFlightsDto {
   @ApiProperty({ description: 'Departure airport' })
@@ -45,4 +61,10 @@ export class SearchFlightsDto {
   @IsEnum(['oneWay', 'roundTrip'])
   @IsOptional()
   tripType: 'oneWay' | 'roundTrip' = 'oneWay';
+
+  @ApiProperty({ description: 'Passenger count details' })
+  @ValidateNested()
+  @Type(() => PassengerCount)
+  @IsOptional()
+  passengers?: PassengerCount = { adult: 1, child: 0, infant: 0 };
 }

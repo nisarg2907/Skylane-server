@@ -1,17 +1,57 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SearchFlightsDto } from './dto/search-flights.dto';
-import { Flight, Airport, Airline } from '@prisma/client';
+import { CabinClass, Flight, Airport, Airline } from '@prisma/client';
 
 @Injectable()
 export class FlightsService {
   constructor(private prisma: PrismaService) {}
+  private getCapacityField(cabinClass: CabinClass): string {
+    switch (cabinClass) {
+      case CabinClass.ECONOMY:
+        return 'economyCapacity';
+      case CabinClass.PREMIUM_ECONOMY:
+        return 'premiumEconomyCapacity';
+      case CabinClass.BUSINESS:
+        return 'businessCapacity';
+      case CabinClass.FIRST:
+        return 'firstClassCapacity';
+      default:
+        return 'economyCapacity';
+    }
+  }
 
-  // One-way flights search
+  private async getAvailableSeats(
+    flightId: string,
+    cabinClass: CabinClass,
+  ): Promise<number> {
+    const capacityField = this.getCapacityField(cabinClass);
+
+    const flight = await this.prisma.flight.findUnique({
+      where: { id: flightId },
+      select: {
+        [capacityField]: true,
+      },
+    });
+
+    if (!flight) {
+      return 0;
+    }
+
+    // Safely convert capacity to number (fallback to 0 if null/undefined)
+    const capacity = Number(flight[capacityField]) || 0;
+
+    // Return available seats (ensure it's never negative)
+    return Math.max(0, capacity);
+  }
+
+  // Updated one-way flights search with seat availability check
   async searchOneWayFlights(
     searchDto: SearchFlightsDto,
   ): Promise<{ outboundFlights: Flight[]; returnFlights: Flight[] }> {
-    const { from, to, departureDate, cabinClass } = searchDto;
+    const { from, to, departureDate, cabinClass, passengers } = searchDto;
+    const totalPassengers =
+      Number(passengers?.adult || 0) + Number(passengers?.child || 0);
 
     const depDate = new Date(departureDate);
     const nextDay = new Date(departureDate);
@@ -54,11 +94,23 @@ export class FlightsService {
       },
     });
 
-    if (oneWayFlights.length > 0) {
-      return { outboundFlights: oneWayFlights, returnFlights: [] };
+    // Filter flights based on available seats
+    const availableFlights = [];
+    for (const flight of oneWayFlights) {
+      const availableSeats = await this.getAvailableSeats(
+        flight.id,
+        cabinClass,
+      );
+      if (availableSeats >= totalPassengers) {
+        availableFlights.push(flight);
+      }
     }
 
-    // If no flights found, return future flights
+    if (availableFlights.length > 0) {
+      return { outboundFlights: availableFlights, returnFlights: [] };
+    }
+
+    // If no flights found, return future flights with available seats
     const futureFlights = await this.prisma.flight.findMany({
       where: {
         departureTime: {
@@ -96,13 +148,29 @@ export class FlightsService {
       take: 10,
     });
 
-    return { outboundFlights: futureFlights, returnFlights: [] };
+    // Filter future flights based on available seats
+    const availableFutureFlights = [];
+    for (const flight of futureFlights) {
+      const availableSeats = await this.getAvailableSeats(
+        flight.id,
+        cabinClass,
+      );
+      if (availableSeats >= totalPassengers) {
+        availableFutureFlights.push(flight);
+      }
+    }
+
+    return { outboundFlights: availableFutureFlights, returnFlights: [] };
   }
 
+  // Updated round-trip flights search with seat availability check
   async searchRoundTripFlights(
     searchDto: SearchFlightsDto,
   ): Promise<{ outboundFlights: Flight[]; returnFlights: Flight[] }> {
-    const { from, to, departureDate, returnDate, cabinClass } = searchDto;
+    const { from, to, departureDate, returnDate, cabinClass, passengers } =
+      searchDto;
+    const totalPassengers =
+      Number(passengers?.adult || 0) + Number(passengers?.child || 0);
 
     const depDate = new Date(departureDate);
     const nextDay = new Date(departureDate);
@@ -147,6 +215,18 @@ export class FlightsService {
       },
     });
 
+    // Filter outbound flights based on available seats
+    const availableOutboundFlights = [];
+    for (const flight of outboundFlights) {
+      const availableSeats = await this.getAvailableSeats(
+        flight.id,
+        cabinClass,
+      );
+      if (availableSeats >= totalPassengers) {
+        availableOutboundFlights.push(flight);
+      }
+    }
+
     // Search return flights (return)
     const returnFlights = await this.prisma.flight.findMany({
       where: {
@@ -182,11 +262,26 @@ export class FlightsService {
       },
     });
 
+    // Filter return flights based on available seats
+    const availableReturnFlights = [];
+    for (const flight of returnFlights) {
+      const availableSeats = await this.getAvailableSeats(
+        flight.id,
+        cabinClass,
+      );
+      if (availableSeats >= totalPassengers) {
+        availableReturnFlights.push(flight);
+      }
+    }
+
     // If both outbound and return flights are found, return them as separate objects
-    if (outboundFlights.length > 0 && returnFlights.length > 0) {
+    if (
+      availableOutboundFlights.length > 0 &&
+      availableReturnFlights.length > 0
+    ) {
       return {
-        outboundFlights,
-        returnFlights,
+        outboundFlights: availableOutboundFlights,
+        returnFlights: availableReturnFlights,
       };
     }
 
@@ -228,9 +323,21 @@ export class FlightsService {
       take: 5,
     });
 
+    // Filter future outbound flights based on available seats
+    const availableFutureOutboundFlights = [];
+    for (const flight of futureOutboundFlights) {
+      const availableSeats = await this.getAvailableSeats(
+        flight.id,
+        cabinClass,
+      );
+      if (availableSeats >= totalPassengers) {
+        availableFutureOutboundFlights.push(flight);
+      }
+    }
+
     // Pair outbound and return flights
     const pairedFlights = [];
-    for (const outbound of futureOutboundFlights) {
+    for (const outbound of availableFutureOutboundFlights) {
       const potentialReturnFlights = await this.prisma.flight.findMany({
         where: {
           departureTime: {
@@ -268,14 +375,21 @@ export class FlightsService {
         take: 2,
       });
 
-      if (potentialReturnFlights.length > 0) {
-        pairedFlights.push(outbound, ...potentialReturnFlights);
+      // Filter return flights based on available seats
+      for (const returnFlight of potentialReturnFlights) {
+        const availableSeats = await this.getAvailableSeats(
+          returnFlight.id,
+          cabinClass,
+        );
+        if (availableSeats >= totalPassengers) {
+          pairedFlights.push(returnFlight);
+        }
       }
     }
 
     // Returning paired flights as outbound and return objects
     return {
-      outboundFlights: futureOutboundFlights,
+      outboundFlights: availableFutureOutboundFlights,
       returnFlights: pairedFlights,
     };
   }
