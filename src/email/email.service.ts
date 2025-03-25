@@ -91,20 +91,48 @@ export class EmailService {
       // Get the first flight segment for email subject
       const firstSegment = bookingDetails.flightSegments[0];
       const flight = firstSegment.flight;
+      const subject = `Flight Booking Cancellation - ${flight.departureAirport.code} to ${flight.arrivalAirport.code}`;
 
-      // Create email content
-      const mailOptions = {
+      // Create email content for the first segment
+      const mailOptionsFirstSegment = {
         from: `"${this.configService.get<string>('EMAIL_FROM_NAME', 'Flight Booking')}" <${this.configService.get<string>('EMAIL_FROM')}>`,
         to: userEmail,
-        subject: `Flight Booking Cancellation - ${flight.departureAirport.code} to ${flight.arrivalAirport.code}`,
+        subject: subject,
         html: this.getBookingCancellationTemplate(userName, bookingDetails),
       };
 
-      // Send the email
-      const info = await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Cancellation email sent: ${info.messageId}`);
+      // Send the email for the first segment
+      const infoFirstSegment = await this.transporter.sendMail(
+        mailOptionsFirstSegment,
+      );
+      this.logger.log(
+        `Cancellation email sent for first segment: ${infoFirstSegment.messageId}`,
+      );
+
+      // Check if there is a second segment and send a separate email
+      if (bookingDetails.flightSegments.length > 1) {
+        const secondSegment = bookingDetails.flightSegments[1];
+        const secondFlight = secondSegment.flight;
+        const subjectSecondSegment = `Flight Booking Cancellation - ${secondFlight.departureAirport.code} to ${secondFlight.arrivalAirport.code}`;
+
+        // Create email content for the second segment
+        const mailOptionsSecondSegment = {
+          from: `"${this.configService.get<string>('EMAIL_FROM_NAME', 'Flight Booking')}" <${this.configService.get<string>('EMAIL_FROM')}>`,
+          to: userEmail,
+          subject: subjectSecondSegment,
+          html: this.getBookingCancellationTemplate(userName, bookingDetails),
+        };
+
+        // Send the email for the second segment
+        const infoSecondSegment = await this.transporter.sendMail(
+          mailOptionsSecondSegment,
+        );
+        this.logger.log(
+          `Cancellation email sent for second segment: ${infoSecondSegment.messageId}`,
+        );
+      }
     } catch (error) {
-      this.logger.error(`Failed to send cancellation email: ${error.message}`);
+      console.error(`Failed to send cancellation email: ${error.message}`);
       throw error;
     }
   }
