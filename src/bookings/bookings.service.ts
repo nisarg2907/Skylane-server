@@ -8,7 +8,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
-import { Booking, BookingStatus, PassengerType } from '@prisma/client';
+import {
+  Booking,
+  BookingStatus,
+  CabinClass,
+  PassengerType,
+} from '@prisma/client';
 import { FlightsService } from 'src/flights/flights.service';
 import { EmailService } from 'src/email/email.service';
 import { TicketService } from 'src/ticket/ticket.service';
@@ -23,6 +28,50 @@ export class BookingsService {
     private emailService: EmailService,
     private ticketService: TicketService,
   ) {}
+
+  private async updateFlightSeats(
+    flightId: string,
+    cabinClass: CabinClass,
+    passengerCount: number,
+    isAdding: boolean,
+  ) {
+    const flight = await this.prisma.flight.findUnique({
+      where: { id: flightId },
+    });
+
+    if (!flight) {
+      throw new NotFoundException(`Flight with ID ${flightId} not found`);
+    }
+
+    // Determine which capacity and price field to update based on cabin class
+    let capacityField: string;
+    switch (cabinClass) {
+      case CabinClass.ECONOMY:
+        capacityField = 'economyCapacity';
+        break;
+      case CabinClass.PREMIUM_ECONOMY:
+        capacityField = 'premiumEconomyCapacity';
+        break;
+      case CabinClass.BUSINESS:
+        capacityField = 'businessCapacity';
+        break;
+      case CabinClass.FIRST:
+        capacityField = 'firstClassCapacity';
+        break;
+      default:
+        throw new BadRequestException('Invalid cabin class');
+    }
+
+    // Update the capacity
+    await this.prisma.flight.update({
+      where: { id: flightId },
+      data: {
+        [capacityField]: isAdding
+          ? { increment: passengerCount }
+          : { decrement: passengerCount },
+      },
+    });
+  }
 
   async getUserBookings(userId: string) {
     const bookings = await this.prisma.booking.findMany({
@@ -162,7 +211,6 @@ export class BookingsService {
       bookingDate: booking.bookingDate.toISOString(),
     };
   }
-
   async createBooking(
     createBookingDto: CreateBookingDto,
     userId: string,
@@ -175,12 +223,14 @@ export class BookingsService {
       isRoundTrip,
     } = createBookingDto;
 
-    // Validate flights
+    // Validate flights and update seat availability
     for (const segment of flightSegments) {
-      const flight = await this.flightsService.getFlight(segment.flightId);
-      if (!flight) {
-        throw new Error(`Flight with ID ${segment.flightId} not found`);
-      }
+      await this.updateFlightSeats(
+        segment.flightId,
+        segment.cabinClass,
+        passengers.length,
+        false, // removing seats
+      );
     }
 
     try {
@@ -316,6 +366,16 @@ export class BookingsService {
         },
       });
     } catch (error) {
+      // Rollback seat updates if booking creation fails
+      for (const segment of flightSegments) {
+        await this.updateFlightSeats(
+          segment.flightId,
+          segment.cabinClass,
+          passengers.length,
+          true, // adding seats back
+        );
+      }
+
       this.logger.error(`Error creating booking: ${error.message}`);
       throw error;
     }
@@ -548,13 +608,7 @@ export class BookingsService {
         passengers: true,
         flightSegments: {
           include: {
-            flight: {
-              include: {
-                airline: true,
-                departureAirport: true,
-                arrivalAirport: true,
-              },
-            },
+            flight: true,
           },
         },
         user: true,
@@ -575,6 +629,21 @@ export class BookingsService {
     }
 
     try {
+      // Update flight seats for each flight segment before cancelling
+      for (const segment of existingBooking.flightSegments) {
+        await this.updateFlightSeats(
+          segment.flightId,
+          segment.cabinClass,
+          existingBooking.passengers.length,
+          true, // adding seats back
+        );
+      }
+
+      // Delete old ticket files for each flight segment
+      for (const segment of existingBooking.flightSegments) {
+        await this.ticketService.deleteOldTicket(segment.id, id);
+      }
+
       // Update booking status to CANCELLED
       const cancelledBooking = await this.prisma.booking.update({
         where: { id },
@@ -600,7 +669,6 @@ export class BookingsService {
       });
 
       // Send cancellation email
-      console.log(`Sending booking cancellation email for booking: ${id}`);
       const userName =
         `${cancelledBooking.user.firstName || ''} ${cancelledBooking.user.lastName || ''}`.trim() ||
         'Valued Customer';

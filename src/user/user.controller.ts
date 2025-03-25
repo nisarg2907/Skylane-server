@@ -74,7 +74,7 @@ export class UserController {
   })
   async getPaymentMethods(@Request() req): Promise<PaymentMethodResponseDto[]> {
     this.logger.log('GET /users/payment-methods');
-    return this.userService.getUserPaymentMethods(req.user.authId);
+    return this.userService.getUserPaymentMethods(req.user.id);
   }
 
   @Post('payment-methods')
@@ -90,7 +90,7 @@ export class UserController {
   ): Promise<PaymentMethodResponseDto> {
     this.logger.log('POST /users/payment-methods');
     return this.userService.createPaymentMethod(
-      req.user.authId,
+      req.user.id,
       createPaymentMethodDto,
     );
   }
@@ -112,7 +112,7 @@ export class UserController {
     @Param('id') id: string,
   ): Promise<PaymentMethodResponseDto> {
     this.logger.log(`GET /users/payment-methods/${id}`);
-    return this.userService.getPaymentMethod(req.user.authId, id);
+    return this.userService.getPaymentMethod(req.user.id, id);
   }
 
   @Patch('payment-methods/:id')
@@ -134,7 +134,7 @@ export class UserController {
   ): Promise<PaymentMethodResponseDto> {
     this.logger.log(`PATCH /users/payment-methods/${id}`);
     return this.userService.updatePaymentMethod(
-      req.user.authId,
+      req.user.id,
       id,
       updatePaymentMethodDto,
     );
@@ -156,7 +156,7 @@ export class UserController {
     @Param('id') id: string,
   ): Promise<void> {
     this.logger.log(`DELETE /users/payment-methods/${id}`);
-    return this.userService.deletePaymentMethod(req.user.authId, id);
+    return this.userService.deletePaymentMethod(req.user.id, id);
   }
 
   @Post('payment-methods/:id/default')
@@ -176,6 +176,6 @@ export class UserController {
     @Param('id') id: string,
   ): Promise<PaymentMethodResponseDto> {
     this.logger.log(`POST /users/payment-methods/${id}/default`);
-    return this.userService.setDefaultPaymentMethod(req.user.authId, id);
+    return this.userService.setDefaultPaymentMethod(req.user.id, id);
   }
 }

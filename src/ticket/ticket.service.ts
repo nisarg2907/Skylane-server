@@ -96,23 +96,8 @@ export class TicketService {
         .getPublicUrl(fileName);
 
       // 6. Delete old ticket files for this segment if they exist
-      try {
-        if (segmentId) {
-          const existingSegment = await this.prisma.flightSegment.findUnique({
-            where: { id: segmentId },
-            select: { ticketUrl: true },
-          });
-
-          if (existingSegment?.ticketUrl) {
-            const oldFileName = existingSegment.ticketUrl.split('/').pop();
-            await this.supabaseService
-              .getClient()
-              .storage.from('bookings')
-              .remove([`tickets/${bookingId}/${oldFileName}`]);
-          }
-        }
-      } catch (error) {
-        this.logger.error(`Failed to delete old ticket: ${error.message}`);
+      if (segmentId) {
+        await this.deleteOldTicket(segmentId, bookingId);
       }
 
       // 7. Update the flight segment with the new ticket URL
@@ -132,6 +117,28 @@ export class TicketService {
         `Error generating and storing ticket: ${error.message}`,
       );
       throw error;
+    }
+  }
+
+  /**
+   * Deletes old ticket files for a flight segment if they exist
+   */
+  async deleteOldTicket(segmentId: string, bookingId: string): Promise<void> {
+    try {
+      const existingSegment = await this.prisma.flightSegment.findUnique({
+        where: { id: segmentId },
+        select: { ticketUrl: true },
+      });
+
+      if (existingSegment?.ticketUrl) {
+        const oldFileName = existingSegment.ticketUrl.split('/').pop();
+        await this.supabaseService
+          .getClient()
+          .storage.from('bookings')
+          .remove([`tickets/${bookingId}/${oldFileName}`]);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to delete old ticket: ${error.message}`);
     }
   }
 
