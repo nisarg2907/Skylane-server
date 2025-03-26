@@ -1,73 +1,146 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
-</p>
+# Skylane Flight Booking System - Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+## Project Overview
+Skylane Backend is a robust NestJS-based server application for managing flight bookings, user authentication, and related services.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Technology Stack
+- NestJS
+- TypeScript
+- Prisma ORM
+- PostgreSQL (Supabase)
+- Nodemailer
+- Supabase Authentication
 
-## Description
+## Key Services
+1. **Authentication Service**
+   - User authentication and token verification
+   - Sync authenticated users with database
+   - Protected routes
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+2. **User Service**
+   - Profile management
+   - Update user details
+   - Manage payment methods
+
+3. **Flight Service**
+   - Advanced flight search
+   - One-way and round-trip flight filtering
+   - Comprehensive search criteria support
+
+4. **Booking Service**
+   - Booking creation
+   - Booking updates
+   - Booking cancellations
+   - Retrieve user booking details
+
+5. **Ticket Service**
+   - E-ticket generation
+   - Ticket management
+   - Email ticket distribution
+   - Supabase storage integration
+
+6. **Email Service**
+   - User notifications
+   - Ticket email dispatches
+   - Uses Nodemailer
+
+7. **SSE (Server-Sent Events) Service**
+   - Real-time flight seat updates
+   - Broadcast seat availability changes
+
+8. **Encryption Service**
+   - Secure user card information
+   - Encrypt/decrypt sensitive data
+
+## Prerequisites
+- Node.js (v18+)
+- npm
+- PostgreSQL (Supabase)
 
 ## Installation
 
+### Clone the Repository
 ```bash
-$ npm install
+git clone git@github.com:nisarg2907/Skylane-server.git
+cd Skylane-server
 ```
 
-## Running the app
-
+### Install Dependencies
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
 ```
 
-## Test
+### Environment Configuration
+Create a `.env` file with the following variables:
+```
+# Database Configuration
+DATABASE_URL=your_postgresql_connection_string
+DIRECT_URL=your_direct_database_connection_string
 
-```bash
-# unit tests
-$ npm run test
+# Supabase Configuration
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_KEY=your_supabase_anon_key
 
-# e2e tests
-$ npm run test:e2e
+# Server Configuration
+CLIENT_URL=http://localhost:5173
+PORT=3001
 
-# test coverage
-$ npm run test:cov
+# Email Configuration
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_SECURE=true
+EMAIL_USER=your_email
+EMAIL_PASSWORD=your_email_password
+EMAIL_FROM=your_email
+EMAIL_FROM_NAME=Skylane Flights
+
+# Security
+ENCRYPTION_KEY=your_encryption_key
 ```
 
-## Support
+### Database Setup
+```bash
+# Generate Prisma Client
+npx prisma generate
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+# Run Database Migrations
+npx prisma migrate deploy
 
-## Stay in touch
+# Seed Database (Optional)
+npm run seed
+```
 
-- Author - [Kamil Myśliwiec](https://kamilmysliwiec.com)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## Running the Application
 
-## License
+### Development Mode
+```bash
+npm run start:dev
+```
 
-Nest is [MIT licensed](LICENSE).
+### Production Mode
+```bash
+npm run build
+npm run start:prod
+```
+
+```
+
+## Deployment
+- Deployed on Render
+- GitHub Repository: https://github.com/nisarg2907/Skylane-server
+
+
+## Security Features
+- JWT Authentication
+- Route Protection
+- Data Encryption
+- Secure Environment Configuration
+
+## Performance Optimizations
+- Prisma ORM for efficient database queries
+- Optimized database connections
+
+## Logging and Monitoring
+- Built-in NestJS logging
+- Error tracking
+
